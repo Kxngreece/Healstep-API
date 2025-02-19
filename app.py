@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, Body, HTTPException, Query, Request, Response, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, TypeAdapter,BeforeValidator,EmailStr
-import psycopg2
+import psycopg
 from datetime import datetime, timedelta, date, time
 from fastapi_mail import FastMail, MessageSchema,ConnectionConfig
 from typing import List
@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-conn = psycopg2.connect(database=os.getenv("DB_NAME"),
+conn = psycopg.connect(database=os.getenv("DB_NAME"),
                         host= os.getenv("DB_HOST"),
                         user=os.getenv("DB_USER"),
                         password=os.getenv("DB_PASS"),
