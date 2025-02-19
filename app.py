@@ -12,11 +12,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-conn = psycopg.connect(database=os.getenv("DB_NAME"),
+conn = psycopg.connect( dbname=os.getenv("DB_NAME"),
                         host= os.getenv("DB_HOST"),
                         user=os.getenv("DB_USER"),
                         password=os.getenv("DB_PASS"),
-                        port="5432")
+                        port=("5432")
+)
 
 conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
