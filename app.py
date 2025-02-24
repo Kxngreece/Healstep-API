@@ -79,6 +79,21 @@ class Appointments(BaseModel):
     phone_number: str
     reason: str
     time_stamp: datetime
+    
+class weekrotation(BaseModel):
+    date: datetime
+    avgangle: float
+    brace_id: str
+
+class anglerotation(BaseModel):
+    date: datetime
+    angle: float
+    brace_id: str
+    
+class muscleactivity(BaseModel):
+    date: datetime
+    muscle_reading: float
+    brace_id: str
 
 class count(BaseModel):
     number: int
@@ -120,7 +135,7 @@ async def get_angle():
         cursor.execute("SELECT angle, brace_id FROM knee_brace;")
         angle = cursor.fetchall()
         print(cursor.fetchall())
-        response
+        response = [anglerotation(angle=item[0], brace_id=item[1]) for item in angle]
         if not angle:
             raise HTTPException(status_code=404, detail="No angle data found.")
         return angle
@@ -136,6 +151,7 @@ async def get_emg():
         cursor.execute("SELECT muscle_reading, brace_id FROM knee_brace;")
         muscle_reading = cursor.fetchall()
         print(cursor.fetchall())
+        response = [muscleactivity( muscle_reading=item[0], brace_id=item[1]) for item in muscle_reading]
         if not muscle_reading:
             raise HTTPException(status_code=404, detail="No muscle activity data found.")
         return muscle_reading
@@ -358,3 +374,24 @@ async def send_file(
     await fm.send_message(message)
 
     return JSONResponse(status_code=200, content={"message": "email has been sent"})
+
+@app.post("/knee-brace", status_code=201)
+async def post_knee_brace(angle: float, muscle_reading: float, brace_id: str):
+    try:
+        cursor = conn.cursor()
+        
+        query = f"""INSERT INTO knee_brace 
+                    ( angle, muscle_reading, brace_id) 
+                    VALUES
+                        ('{angle}', '{muscle_reading}', '{brace_id}')
+                    """
+        
+        cursor.execute(query)
+        conn.commit()
+
+        return JSONResponse(status_code=201, content={"message": "Knee brace data successfully submitted."})
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.rollback()  # Rollback any failed transaction
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    
