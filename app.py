@@ -330,7 +330,7 @@ async def post_alerts(alerts:Alert):
         
         cursor.execute(query)
         conn.commit()
-        await send_mail({"email":["davaugh.sanderson@gmail.com"]},brace_id, type, message)
+        await send_mail({"email":["josiah.reece007@gmail.com"]},brace_id, type, message)
 
         return JSONResponse(status_code=201, content={"message": "Feedback successfully submitted."})
     except Exception as e:
