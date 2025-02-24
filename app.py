@@ -159,7 +159,7 @@ async def get_angle():
         response = [anglerotation(angle=item[0], brace_id=item[1]) for item in angle]
         if not angle:
             raise HTTPException(status_code=404, detail="No angle data found.")
-        return angle
+        return response
     except Exception as e:
         # Handle any errors and return a 500 response
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
@@ -176,7 +176,7 @@ async def get_emg():
         response = [muscleactivity( muscle_reading=item[0], brace_id=item[1]) for item in muscle_reading]
         if not muscle_reading:
             raise HTTPException(status_code=404, detail="No muscle activity data found.")
-        return muscle_reading
+        return response
     except Exception as e:
         # Handle any errors and return a 500 response
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
@@ -230,7 +230,6 @@ async def get_appointments():
         print(cursor.fetchall())
         if not appointments:
             raise HTTPException(status_code=404, detail="No appointments data found.")
-     
         return response
     except Exception as e:
         # Handle any errors and return a 500 response
@@ -248,7 +247,6 @@ async def get_feedback():
         print(cursor.fetchall())
         if not feedback:
             raise HTTPException(status_code=404, detail="No feedback data found.")
- 
         return response
     except Exception as e:
         # Handle any errors and return a 500 response
@@ -420,6 +418,7 @@ async def post_knee_brace(data:KneeBraceData):
         
         cursor.execute(query)
         conn.commit()
+        cursor.close()
         return JSONResponse(status_code=201, content={"message": "Knee brace data successfully submitted."})
     except Exception as e:
         print(f"Error: {e}")
