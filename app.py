@@ -86,7 +86,7 @@ class weekrotation(BaseModel):
     brace_id: str
 
 class anglerotation(BaseModel):
-    date: datetime
+    # date: datetime
     angle: float
     brace_id: str
     
