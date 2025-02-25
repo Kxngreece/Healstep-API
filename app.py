@@ -140,7 +140,6 @@ async def get_knee_brace():
         cursor.execute("SELECT angle, muscle_reading, brace_id FROM knee_brace;")
         knee_brace = cursor.fetchall()
         print(cursor.fetchall())
-        cursor.close()
         response = [KneeBraceData(angle=item[0], muscle_reading=item[1], brace_id=item[2]) for item in knee_brace]
         if not knee_brace:
             raise HTTPException(status_code=404, detail="No knee brace data found.")
@@ -172,7 +171,7 @@ async def get_emg():
         cursor.execute("SELECT muscle_reading, brace_id FROM knee_brace;")
         muscle_reading = cursor.fetchall()
         print(cursor.fetchall())
-        cursor.close()
+        # cursor.close()
         response = [muscleactivity( muscle_reading=item[0], brace_id=item[1]) for item in muscle_reading]
         if not muscle_reading:
             raise HTTPException(status_code=404, detail="No muscle activity data found.")
@@ -188,7 +187,7 @@ async def get_alert():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM alerts;")
         alert = cursor.fetchall()
-        cursor.close()
+        # cursor.close()
         response = [count ( number = item[0], ) for item in alert]
         print(cursor.fetchall())
         if not alert:
@@ -207,7 +206,7 @@ async def get_alerts():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM alerts;")
         alerts = cursor.fetchall()
-        cursor.close()  
+        # cursor.close()  
         response = [alerthistory (id=item[0], brace_id =(item[1]), type= item[2], message=item[3], time_stamp=item[4]) for item in alerts]
         print(cursor.fetchall())
         if not alerts:
@@ -225,7 +224,7 @@ async def get_appointments():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM appointment;")
         appointments = cursor.fetchall()
-        cursor.close()
+        # cursor.close()
         response = [count ( number = item[0], ) for item in appointments]
         print(cursor.fetchall())
         if not appointments:
@@ -242,7 +241,7 @@ async def get_feedback():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM feedback;")
         feedback = cursor.fetchall()
-        cursor.close()
+        # cursor.close()
         response=[Feedback (brace_id = item[0], body = item[1], type = item[2]) for item in feedback]
         print(cursor.fetchall())
         if not feedback:
@@ -259,7 +258,7 @@ async def get_appoinment():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM appointment;")
         appointment = cursor.fetchall()
-        cursor.close()
+        # cursor.close()
         response = [Appointments (id=item[0], brace_id =(item[1]), name= item[2], email=item[3], phone_number=item[4], reason=item[5], time_stamp=item[6]) for item in appointment]
         print(cursor.fetchall())
         if not appointment:
@@ -285,7 +284,7 @@ async def get_weeklyrotation():
     ORDER BY 
         DATE(time_stamp);""")
         weeklyrotation = cursor.fetchall()
-        cursor.close()
+        # cursor.close()
         response = [weekly(date = item[0],  avgangle=item[1], brace_id=item[2]) for item in weeklyrotation]
         print(cursor.fetchall())
         if not weeklyrotation:
@@ -317,7 +316,7 @@ async def get_monthlyrotation():
     FROM monthly_sums
     ORDER BY month_number;""")
         monthlyrotation = cursor.fetchall()
-        cursor.close()
+        # cursor.close()
         response = [monthrotation(month = item[0], month_number = item[1], avgangle=item[2], brace_id=item[3]) for item in monthlyrotation]
         print(cursor.fetchall())
         if not monthlyrotation:
@@ -418,7 +417,7 @@ async def post_knee_brace(data:KneeBraceData):
         
         cursor.execute(query)
         conn.commit()
-        cursor.close()
+        # cursor.close()
         return JSONResponse(status_code=201, content={"message": "Knee brace data successfully submitted."})
     except Exception as e:
         print(f"Error: {e}")
