@@ -92,12 +92,12 @@ class anglerotation(BaseModel):
     
 class muscleactivity(BaseModel):
     date: datetime
-    muscle_reading: float
+    muscle_reading: int
     brace_id: str
 
 class KneeBraceData(BaseModel):
     angle: float
-    muscle_reading: float
+    muscle_reading: int
     brace_id: str
     
 class count(BaseModel):
