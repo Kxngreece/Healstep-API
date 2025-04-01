@@ -1,16 +1,21 @@
 import os
-from fastapi import FastAPI, Body, HTTPException, Query, Request, Response, File, Form, UploadFile
+import logging
+from fastapi import FastAPI, HTTPException, UploadFile, Form, Query
+import smtplib
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, TypeAdapter,BeforeValidator,EmailStr
-import psycopg
-from datetime import datetime, timedelta, date, time
-from fastapi_mail import FastMail, MessageSchema,ConnectionConfig
+from pydantic import BaseModel, EmailStr
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+import psycopg
+from datetime import datetime
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 conn = psycopg.connect( dbname=os.getenv("DB_NAME"),
                         host= os.getenv("DB_HOST"),
@@ -19,6 +24,8 @@ conn = psycopg.connect( dbname=os.getenv("DB_NAME"),
                         port=("5432")
 )
 
+
+# Email configuration
 conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),   
@@ -29,398 +36,285 @@ conf = ConnectionConfig(
     MAIL_FROM=os.getenv("MAIL_FROM"),
     USE_CREDENTIALS=True,    
 )
-app = FastAPI()
-origins = [ "WEBSITE_URL"]
+fm = FastMail(conf)
 
+
+app = FastAPI()
+origins = os.getenv("WEBSITE_URL", "http://127.0.0.1:8000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins= origins,  
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class EmailSchema(BaseModel):
-   email: List[EmailStr]
-   
-class weekly (BaseModel):
-    date: datetime
-    avgangle: float
-    brace_id: str
 
-class monthrotation (BaseModel):
-    month : str
-    month_number: int
-    avgangle: float
+class EmailSchema(BaseModel):
+    email: List[EmailStr]
+
+class KneeBraceData(BaseModel):
+    angle: float
+    muscle_reading: int
     brace_id: str
-    
-class Feedback(BaseModel):
-    brace_id: str
-    body: str
-    type: str
 
 class Alert(BaseModel):
     brace_id: str
     type: str
     message: str
     
-class alerthistory(BaseModel):
-    id: int
+class Feedback(BaseModel):
     brace_id: str
+    body: str
     type: str
-    message: str
-    time_stamp: datetime
-    
+
 class Appointments(BaseModel):
-    id: int
     brace_id: str
     name: str
-    email : str
+    email: str
     phone_number: str
     reason: str
     time_stamp: datetime
-    
-class weekrotation(BaseModel):
+
+class WeeklyRotation(BaseModel):
     date: datetime
     avgangle: float
     brace_id: str
 
-class anglerotation(BaseModel):
-    # date: datetime
-    angle: float
+class MonthlyRotation(BaseModel):
+    month: str
+    month_number: int
+    avgangle: float
     brace_id: str
     
-class muscleactivity(BaseModel):
-    date: datetime
-    muscle_reading: int
+class User(BaseModel):
     brace_id: str
+    name: str
+    email: EmailStr
+    contact: str
+    
+class Settings(BaseModel):
+    brace_id: str
+    upper_angle_treshold: float
+    lower_angle_treshold: float
+    contact: str
 
-class KneeBraceData(BaseModel):
-    angle: float
-    muscle_reading: int
-    brace_id: str
-    
-class count(BaseModel):
-    number: int
-    
-    
-async def send_mail(email: EmailSchema, location:str, string: str, code: str):
+
+
+# Email
+async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str):
     template = f"""
-            <html>
-            <body>
-            
-    
-    <p>     <br> URGENT!!!
-            <br> Patient with Brace ID :{location} is currently experiencing unusual activity. PLEASE check their status immediately.
-            <br>Knee {string} of rotation has been breached.
-            <br> Alert Code: {code} </p>
-    
-    
-            </body>
-            </html>
-            """
-
-    message = MessageSchema(
-       subject="Healstep Alert System Notice",
-       recipients=email.get("email"),  # List of recipients, as many as you can pass  
-       body=template,
-       subtype="html"
-       )
-
-    fm = FastMail(conf)
-    await fm.send_message(message)
-
-    return JSONResponse(status_code=200, content={"message": "email has been sent"})
-
+    <html>
+    <body>
+    <p><strong>URGENT ALERT!</strong></p>
+    <p>Dear User,</p>
+    <p>We have detected an issue with your knee brace.</p>
+    <p>Please take the following action:</p>
+    <p>1. Check the knee brace for any visible issues.</p>
+    <p>2. Ensure that the brace is properly fitted.</p>
+    <p>3. If the issue persists, please contact our support.</p>
+    <p>For your reference, here are the details:</p>
+    <p><strong>Brace ID: {brace}</strong></p>
+    <p><strong>Type: {alert_type}</strong></p>
+    <p><strong>Alert Code: {code}</strong></p>
+    <p>Thank you for your attention to this matter.</p>
+    <p>Best regards,</p>
+    <p><i><strong>KneeSync </i></strong> Team</p>
+    </body>
+    </html>
+    """
+    message = MessageSchema(subject="KneeSync Alert System Notice", recipients=email.email, body=template, subtype="html")
+    try:
+        await fm.send_message(message)
+    except Exception as e:
+        logging.error(f"Failed to send email: {e}")
 
 @app.get("/knee-brace", status_code=200)
 async def get_knee_brace():
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT angle, muscle_reading, brace_id FROM knee_brace;")
-        knee_brace = cursor.fetchall()
-        print(cursor.fetchall())
-        response = [KneeBraceData(angle=item[0], muscle_reading=item[1], brace_id=item[2]) for item in knee_brace]
-        if not knee_brace:
-            raise HTTPException(status_code=404, detail="No knee brace data found.")
-        return response
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT angle, muscle_reading, brace_id FROM knee_brace;")
+            knee_brace = cursor.fetchall()
+            if not knee_brace:
+                raise HTTPException(status_code=404, detail="No knee brace data found.")
+        return [KneeBraceData(angle=item[0], muscle_reading=item[1], brace_id=item[2]) for item in knee_brace]
     except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-@app.get("/angle", status_code=200)
-async def get_angle():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT angle, brace_id FROM knee_brace;")
-        angle = cursor.fetchall()
-        print(cursor.fetchall())
-        response = [anglerotation(angle=item[0], brace_id=item[1]) for item in angle]
-        if not angle:
-            raise HTTPException(status_code=404, detail="No angle data found.")
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-@app.get("/emg", status_code=200)
-async def get_emg():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT muscle_reading, brace_id FROM knee_brace;")
-        muscle_reading = cursor.fetchall()
-        print(cursor.fetchall())
-        # cursor.close()
-        response = [muscleactivity( muscle_reading=item[0], brace_id=item[1]) for item in muscle_reading]
-        if not muscle_reading:
-            raise HTTPException(status_code=404, detail="No muscle activity data found.")
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-@app.get("/alert", status_code=200)
-async def get_alert():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM alerts;")
-        alert = cursor.fetchall()
-        # cursor.close()
-        response = [count ( number = item[0], ) for item in alert]
-        print(cursor.fetchall())
-        if not alert:
-            raise HTTPException(status_code=404, detail="No alert data found.")
-       
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-    
-@app.get("/alert-history", status_code=200)
-async def get_alerts():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM alerts;")
-        alerts = cursor.fetchall()
-        # cursor.close()  
-        response = [alerthistory (id=item[0], brace_id =(item[1]), type= item[2], message=item[3], time_stamp=item[4]) for item in alerts]
-        print(cursor.fetchall())
-        if not alerts:
-            raise HTTPException(status_code=404, detail="No alerts data found.")
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-    
-@app.get("/appointments", status_code=200)
-async def get_appointments():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM appointment;")
-        appointments = cursor.fetchall()
-        # cursor.close()
-        response = [count ( number = item[0], ) for item in appointments]
-        print(cursor.fetchall())
-        if not appointments:
-            raise HTTPException(status_code=404, detail="No appointments data found.")
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-
-@app.get("/feedback", status_code=200)
-async def get_feedback():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM feedback;")
-        feedback = cursor.fetchall()
-        # cursor.close()
-        response=[Feedback (brace_id = item[0], body = item[1], type = item[2]) for item in feedback]
-        print(cursor.fetchall())
-        if not feedback:
-            raise HTTPException(status_code=404, detail="No feedback data found.")
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-@app.get("/appointment", status_code=200)
-async def get_appoinment():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointment;")
-        appointment = cursor.fetchall()
-        # cursor.close()
-        response = [Appointments (id=item[0], brace_id =(item[1]), name= item[2], email=item[3], phone_number=item[4], reason=item[5], time_stamp=item[6]) for item in appointment]
-        print(cursor.fetchall())
-        if not appointment:
-            raise HTTPException(status_code=404, detail="No feedback data found.")
-        return  response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-@app.get("/weeklyrotation", status_code=200)
-async def get_weeklyrotation():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""SELECT 
-     DATE(time_stamp) AS day,
-        AVG(angle) AS avg_angle,
-        brace_id
-    FROM 
-        knee_brace
-    GROUP BY 
-        DATE(time_stamp), brace_id
-    ORDER BY 
-        DATE(time_stamp);""")
-        weeklyrotation = cursor.fetchall()
-        # cursor.close()
-        response = [weekly(date = item[0],  avgangle=item[1], brace_id=item[2]) for item in weeklyrotation]
-        print(cursor.fetchall())
-        if not weeklyrotation:
-            raise HTTPException(status_code=404, detail="No weeklyrotation data found.")
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-@app.get("/monthlyrotation", status_code=200)
-async def get_monthlyrotation():
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""WITH monthly_sums AS (
-    SELECT
-        TO_CHAR(DATE_TRUNC('month', time_stamp), 'Month') AS month_name,
-        EXTRACT(MONTH FROM time_stamp) AS month_number,
-        AVG(angle) AS angle,
-        brace_id
-    FROM 
-        knee_brace
-    WHERE 
-        date(time_stamp) >= '2025-01-01'
-        AND date(time_stamp) <= '2025-12-31'
-    GROUP BY 
-        month_name, month_number, brace_id)
-    SELECT *
-    FROM monthly_sums
-    ORDER BY month_number;""")
-        monthlyrotation = cursor.fetchall()
-        # cursor.close()
-        response = [monthrotation(month = item[0], month_number = item[1], avgangle=item[2], brace_id=item[3]) for item in monthlyrotation]
-        print(cursor.fetchall())
-        if not monthlyrotation:
-            raise HTTPException(status_code=404, detail="No monthly rotation data found.")
-      
-        return response
-    except Exception as e:
-        # Handle any errors and return a 500 response
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-    
-    
-    
-@app.post("/feedback", status_code=201)
-async def post_feedback(feeback:Feedback):
-    try:
-        cursor = conn.cursor()
-        
-        brace_id = feeback.brace_id
-        body = feeback.body
-        type = feeback.type
-
-        query = f"""INSERT INTO feedback 
-	                ( brace_id, body, type) 
-                    VALUES
-                        ('{brace_id}', '{body}', '{type}')
-                    """
-        
-        cursor.execute(query)
-        conn.commit()
-        await send_mail({"email":["josiah.reece007@gmail.com"]},body, type)
-
-        return JSONResponse(status_code=201, content={"message": "Feedback successfully submitted."})
-    except Exception as e:
-        print(f"Error: {e}")
-        conn.rollback()  # Rollback any failed transaction
+        logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
-    
-@app.post("/alerts", status_code=201)
-async def post_alerts(alerts:Alert):
-    try:
-        cursor = conn.cursor()
-        
-        brace_id = alerts.brace_id
-        type = alerts.type
-        message= alerts.message
-
-        query = f"""INSERT INTO alerts
-	                ( brace_id, type, message) 
-                    VALUES
-                        ('{brace_id}', '{type}', '{message}')
-                    """
-                    
-        
-        cursor.execute(query)
-        conn.commit()
-        await send_mail({"email":["josiah.reece007@gmail.com"]},brace_id, type, message)
-
-        return JSONResponse(status_code=201, content={"message": "Feedback successfully submitted."})
-    except Exception as e:
-        print(f"Error: {e}")
-        conn.rollback()  # Rollback any failed transaction
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-    
-@app.post("/send-mail")
-async def send_file(
-    # background_tasks: BackgroundTasks,
-    file: UploadFile = Form(...)
-    # email:EmailStr = Form(...)
-    )-> JSONResponse:
-
-    message = MessageSchema(
-            subject="Fastapi mail module",
-            recipients=["tiffanycampbell1710@gmail.com"],
-            body="Simple background task",
-            subtype="html",
-            attachments=[file])
-
-    fm = FastMail(conf)
-
-    await fm.send_message(message)
-
-    return JSONResponse(status_code=200, content={"message": "email has been sent"})
 
 @app.post("/knee-brace", status_code=201)
-async def post_knee_brace(data:KneeBraceData):
+async def post_knee_brace(data: KneeBraceData):
     try:
-        cursor = conn.cursor()
-        angle = data.angle
-        muscle_reading = data.muscle_reading
-        brace_id = data.brace_id
-        
-        query = f"""INSERT INTO knee_brace 
-                    ( angle, muscle_reading, brace_id) 
-                    VALUES
-                        ('{angle}', '{muscle_reading}', '{brace_id}')
-                    """
-        
-        cursor.execute(query)
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                    INSERT INTO knee_brace (angle, muscle_reading, brace_id)
+                    VALUES (%s, %s, %s)
+                """, (data.angle, data.muscle_reading, data.brace_id))
         conn.commit()
-        # cursor.close()
         return JSONResponse(status_code=201, content={"message": "Knee brace data successfully submitted."})
     except Exception as e:
-        print(f"Error: {e}")
-        conn.rollback()  # Rollback any failed transaction
+        logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
+
+@app.post("/alerts", status_code=201)
+async def post_alerts(alert: Alert):
+    try:
+        with conn.cursor() as cursor:
+         cursor.execute("""
+                    INSERT INTO alerts (brace_id, type, message)
+                    VALUES (%s, %s, %s)
+                """, (alert.brace_id, alert.type, alert.message))
+        conn.commit()
+        await send_mail(EmailSchema(email=["josiah.reece007@gmail.com"]), alert.brace_id, alert.type, alert.message)
+        return JSONResponse(status_code=201, content={"message": "Alert successfully submitted."})
+    except Exception as e:
+        logging.error(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/send-mail")
+async def send_file(file: UploadFile = Form(...)) -> JSONResponse:
+    try:
+        message = MessageSchema(
+            subject="FastAPI Mail Module",
+            recipients=["josiah.reece007@gmail.com"],
+            body="Simple background task",
+            subtype="html",
+            attachments=[file]
+        )
+        await fm.send_message(message)
+        return JSONResponse(status_code=200, content={"message": "Email has been sent"})
+    except Exception as e:
+        logging.error(f"Email error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@app.get("/appointments")
+async def get_appointments():
+    try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM appointment ORDER BY time_stamp DESC;")
+                appointments = cursor.fetchall()
+                response = [Appointments(brace_id=item[1], name=item[2], email=item[3], phone_number=item[4], reason=item[5], time_stamp=item[6]) for item in appointments]
+                if not appointments:
+                    raise HTTPException(status_code=404, detail="No appointment data found.")
+                return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/feedback")
+async def get_feedback():
+    try:
+          with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM feedback;")
+            feedback = cursor.fetchall()
+            response = [Feedback(brace_id=item[0], body=item[1], type=item[2]) for item in feedback]
+            if not feedback:
+              raise HTTPException(status_code=404, detail="No feedback data found.")
+            return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/weeklyrotation")
+async def get_weekly_rotation():
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                    SELECT DATE(time_stamp) AS day, AVG(angle) AS avg_angle, brace_id
+                    FROM knee_brace
+                    GROUP BY DATE(time_stamp), brace_id
+                    ORDER BY DATE(time_stamp);
+                """)
+        weekly_rotation = cursor.fetchall()
+        response = [WeeklyRotation(date=item[0], avgangle=item[1], brace_id=item[2]) for item in weekly_rotation]
+        if not weekly_rotation:
+                    raise HTTPException(status_code=404, detail="No weekly rotation data found.")
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/monthlyrotation")
+async def get_monthly_rotation():
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+            SELECT TO_CHAR(DATE_TRUNC('month', time_stamp), 'Month') AS month_name,
+                EXTRACT(MONTH FROM time_stamp) AS month_number,
+                AVG(angle) AS avg_angle,
+                brace_id
+            FROM knee_brace
+            GROUP BY month_name, month_number, brace_id
+            ORDER BY month_number;
+        """)
+        monthly_rotation = cursor.fetchall()
+        response = [MonthlyRotation(month=item[0], month_number=item[1], avgangle=item[2], brace_id=item[3]) for item in monthly_rotation]
+        if not monthly_rotation:
+                    raise HTTPException(status_code=404, detail="No monthly rotation data found.")
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@app.post("/users", status_code=201)
+async def create_user(user: User):
+    try:
+        with conn.cursor() as cursor:
+            query = """
+            INSERT INTO users (brace_id, name, email, contact) 
+            VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(query, (user.brace_id, user.name, user.email, user.contact))
+            conn.commit()
+            return JSONResponse(status_code=201, content={"message": "User successfully created."})
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/users", status_code=200)
+async def get_users():
+    try:
+        with conn.cursor() as cursor:
+         cursor.execute("SELECT id, brace_id, name, email, contact FROM users;")
+        users = cursor.fetchall()
+        response = [
+            {"id": item[0], "brace_id": item[1], "name": item[2], "email": item[3], "contact": item[4]} 
+            for item in users
+        ]
+        if not users:
+            raise HTTPException(status_code=404, detail="No user data found.")
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@app.post("/settings", status_code=201)
+async def create_settings(settings: Settings):
+    try:
+        with conn.cursor() as cursor:
+            query = """
+            INSERT INTO settings (brace_id, upper_angle_treshold, lower_angle_treshold, contact) 
+            VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(query, (settings.brace_id, settings.upper_angle_treshold, settings.lower_angle_treshold, settings.contact))
+        conn.commit()
+        return JSONResponse(status_code=201, content={"message": "Settings successfully created."})
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/settings", status_code=200)
+async def get_settings():
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id, brace_id, upper_angle_treshold, lower_angle_treshold, contact, time_stamp FROM settings;")
+            settings = cursor.fetchall()
+        response = [
+            {"id": item[0], "brace_id": item[1], "upper_angle_treshold": item[2], "lower_angle_treshold": item[3], "contact": item[4], "time_stamp": item[5]} 
+            for item in settings
+        ]
+        if not settings:
+            raise HTTPException(status_code=404, detail="No settings data found.")
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
