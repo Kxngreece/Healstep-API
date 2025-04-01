@@ -9,7 +9,7 @@ cd Healstep-API
 git pull 
 sudo docker stop kneesync
 sudo docker buildx build -t kneesync .
-sudo docker run -p 8000:8000 kneesync
+sudo docker run -p 8000:8000 --name kneesync kneesync
 
 
 
