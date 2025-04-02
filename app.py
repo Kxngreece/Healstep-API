@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, UploadFile, Form, Query
+from fastapi import FastAPI, HTTPException, UploadFile, Form, Query, Request, Response, File, Form, Body
 import smtplib
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
@@ -170,7 +170,18 @@ async def post_alerts(alert: Alert):
     except Exception as e:
         logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-
+    
+@app.get("/alerts", status_code=200)
+async def get_alerts():
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM alerts")
+            alerts = cursor.fetchall()
+        return JSONResponse(status_code=200, content={"alerts": alerts})
+    except Exception as e:
+        logging.error(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    
 @app.post("/send-mail")
 async def send_file(file: UploadFile = Form(...)) -> JSONResponse:
     try:
