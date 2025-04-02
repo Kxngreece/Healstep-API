@@ -8,7 +8,7 @@ from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import psycopg
-from datetime import datetime
+from datetime import date, datetime, time
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 
 
@@ -62,6 +62,8 @@ class Alert(BaseModel):
     brace_id: str
     type: str
     message: str
+    date_stamp: date
+    time_stamp: time
     
 class Feedback(BaseModel):
     brace_id: str
@@ -101,8 +103,11 @@ class Settings(BaseModel):
 
 
 
+
+
+
 # Email
-async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str):
+async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str, ):
     template = f"""
     <html>
     <body>
@@ -175,12 +180,16 @@ async def post_alerts(alert: Alert):
 async def get_alerts():
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM alerts")
+            cursor.execute("SELECT brace_id, type, message, DATE(time_stamp) as Date, time_stamp::TIME(0) as Time FROM alerts")
             alerts = cursor.fetchall()
-        return JSONResponse(status_code=200, content={"alerts": alerts})
+            response = [Alert(brace_id=item[0], type=item[1], message=item[2], date_stamp=item[3], time_stamp = item[4]) for item in alerts]
+            if not alerts:
+                raise HTTPException(status_code=404, detail="No alert data found.")
+            return response
     except Exception as e:
         logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+    
     
 @app.post("/send-mail")
 async def send_file(file: UploadFile = Form(...)) -> JSONResponse:
