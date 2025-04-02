@@ -40,7 +40,10 @@ fm = FastMail(conf)
 
 
 app = FastAPI()
-origins = os.getenv("WEBSITE_URL", "http://127.0.0.1:8000").split(",")
+WEBSITE_URL = os.getenv("WEBSITE_URL")
+API_URL = os.getenv("API_URL")
+
+origins = [WEBSITE_URL, API_URL, "http://127.0.0.1:8000", "http://localhost:8000",]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
