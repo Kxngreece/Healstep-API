@@ -108,6 +108,9 @@ class Settings(BaseModel):
 
 
 
+@app.post("/test")
+def handle_post():
+    return {"message": "POST request received", "status": "success"}
 
 # Email
 async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str, ):
