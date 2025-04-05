@@ -16,7 +16,7 @@ sudo docker rm kneesync
 
 sudo docker  build -t kneesync .
 
-sudo docker run -d -p 8000:8000 -- name kneesync kneesync
+sudo docker run -d -p 8000:8000 --name kneesync kneesync
 
 
 
