@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, HTTPException, UploadFile, Form, Query, Request, Response, File, Form, Body
 import smtplib
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -65,8 +65,14 @@ class Alert(BaseModel):
     brace_id: str
     type: str
     message: str
-    date_stamp: date
-    time_stamp: time
+    date_stamp: str 
+    time_stamp: str  
+
+class Alerts(BaseModel):
+    brace_id: str
+    type: str
+    message: str
+
     
 class Feedback(BaseModel):
     brace_id: str
@@ -104,6 +110,10 @@ class Settings(BaseModel):
     lower_angle_treshold: float
     contact: str
 
+class DeviceInfo(BaseModel):
+    brace_id: str
+    display_name: str
+
 
 
 
@@ -116,24 +126,69 @@ async def handle_test():
 # Email
 async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str, ):
     template = f"""
-    <html>
-    <body>
-    <p><strong>URGENT ALERT!</strong></p>
-    <p>Dear User,</p>
-    <p>We have detected an issue with your knee brace.</p>
-    <p>Please take the following action:</p>
-    <p>1. Check the knee brace for any visible issues.</p>
-    <p>2. Ensure that the brace is properly fitted.</p>
-    <p>3. If the issue persists, please contact our support.</p>
-    <p>For your reference, here are the details:</p>
-    <p><strong>Brace ID: {brace}</strong></p>
-    <p><strong>Type: {alert_type}</strong></p>
-    <p><strong>Alert Code: {code}</strong></p>
-    <p>Thank you for your attention to this matter.</p>
-    <p>Best regards,</p>
-    <p><i><strong>KneeSync </i></strong> Team</p>
-    </body>
-    </html>
+   <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>HealStep Alert Notification</title>
+  <style>
+    body {{
+      font-family: Arial, sans-serif;
+      background-color: #f4f7fa;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }}
+    .container {{
+      background-color: #ffffff;
+      padding: 30px;
+      max-width: 600px;
+      margin: auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    }}
+    h2 {{
+      color: #2c3e50;
+    }}
+    .alert {{
+      background-color: #ffe6e6;
+      border-left: 6px solid #e74c3c;
+      padding: 15px;
+      margin-top: 20px;
+    }}
+    .footer {{
+      font-size: 0.9em;
+      color: #777;
+      margin-top: 30px;
+      text-align: center;
+    }}
+    .label {{
+      font-weight: bold;
+      color: #2c3e50;
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🚨 KneeSync Alert Notification</h2>
+    <p>Hello,</p>
+    <p>This is an automated alert from the KneeSync Assistive Knee Brace system. An abnormal reading has been detected.</p>
+    
+    <div class="alert">
+      <p><span class="label">Brace ID:</span> {brace}</p>
+      <p><span class="label">Alert Type:</span> {alert_type}</p>
+      <p><span class="label">Message:</span> {code}</p>
+    </div>
+
+    <p>Please review the patient's data and take necessary actions if needed.</p>
+
+    <div class="footer">
+      KneeSync Monitoring System <br>
+      Powered by HealStep | healstep.support@example.com
+    </div>
+  </div>
+</body>
+</html>
     """
     message = MessageSchema(subject="KneeSync Alert System Notice", recipients=email.email, body=template, subtype="html")
     try:
@@ -168,8 +223,30 @@ async def post_knee_brace(data: KneeBraceData):
         logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
+@app.get("/devices", status_code=200)
+async def get_devices():
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT DISTINCT brace_id FROM knee_brace ORDER BY brace_id;")
+            devices = cursor.fetchall()
+            if not devices:
+                raise HTTPException(status_code=404, detail="No devices found.")
+        
+        devices_list = []
+        for record in devices:
+            mac_address = record[0]
+            bracename = f"Brace {mac_address.replace(':', '')[-6:]}" 
+            devices_list.append(DeviceInfo(brace_id=mac_address, display_name=bracename))  
+        
+        return devices_list
+
+    except Exception as e:
+        logging.error(f"Error fetching list of devices: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve device list.")
+    
 @app.post("/alerts", status_code=201)
-async def post_alerts(alert: Alert):
+async def post_alerts(alert: Alerts):
     try:
         with conn.cursor() as cursor:
          cursor.execute("""
