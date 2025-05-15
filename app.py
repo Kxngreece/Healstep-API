@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, Form, Query, Request, Re
 import smtplib
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
-from typing import List
+from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import psycopg
@@ -43,7 +43,7 @@ app = FastAPI()
 WEBSITE_URL = os.getenv("WEBSITE_URL")
 API_URL = os.getenv("API_URL")
 
-origins = [WEBSITE_URL, API_URL, "http://127.0.0.1:8000", "http://localhost:8000",]
+origins = [WEBSITE_URL, API_URL, "http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:5502"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -60,6 +60,8 @@ class KneeBraceData(BaseModel):
     angle: float
     muscle_reading: int
     brace_id: str
+    timestamp: datetime 
+    display_name: str 
 
 class Alert(BaseModel):
     brace_id: str
@@ -196,18 +198,47 @@ async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str, 
     except Exception as e:
         logging.error(f"Failed to send email: {e}")
 
-@app.get("/knee-brace", status_code=200)
-async def get_knee_brace():
+@app.get("/knee-brace", response_model=List[KneeBraceData], status_code=200)
+async def get_knee_brace_data(
+    brace_id: Optional[str] = Query(None, description="Filter by brace ID. Returns latest reading.")
+):
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT angle, muscle_reading, brace_id FROM knee_brace;")
-            knee_brace = cursor.fetchall()
-            if not knee_brace:
-                raise HTTPException(status_code=404, detail="No knee brace data found.")
-        return [KneeBraceData(angle=item[0], muscle_reading=item[1], brace_id=item[2]) for item in knee_brace]
+            base_query = """
+                SELECT k.angle, k.muscle_reading, k.brace_id, k.time_stamp,
+                       d.display_name
+                FROM knee_brace k
+                LEFT JOIN devices d ON k.brace_id = d.brace_id
+                {where_clause}
+                ORDER BY k.time_stamp DESC
+                LIMIT 1
+            """
+            
+            if brace_id:
+                cursor.execute(f"""
+                    {base_query.format(where_clause="WHERE k.brace_id = %s")}
+                """, (brace_id,))
+            else:
+                cursor.execute(base_query.format(where_clause=""))
+
+            result = cursor.fetchone()
+            
+        if not result:
+            detail = f"No data found{' for ' + brace_id if brace_id else ''}"
+            raise HTTPException(status_code=404, detail=detail)
+            
+        return [{
+            "angle": float(result[0]),
+            "muscle_reading": result[1],
+            "brace_id": result[2],
+            "timestamp": result[3].isoformat(),
+            "display_name": result[4] or result[2]
+        }]
+
     except Exception as e:
         logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+    
 
 @app.post("/knee-brace", status_code=201)
 async def post_knee_brace(data: KneeBraceData):
@@ -228,7 +259,13 @@ async def post_knee_brace(data: KneeBraceData):
 async def get_devices():
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT DISTINCT brace_id FROM knee_brace ORDER BY brace_id;")
+            cursor.execute("""
+                SELECT DISTINCT ON (k.brace_id) k.brace_id, 
+                       COALESCE(d.display_name, k.brace_id) as display_name
+                FROM knee_brace k
+                LEFT JOIN devices d ON k.brace_id = d.brace_id
+                ORDER BY k.brace_id, k.time_stamp DESC 
+            """)
             devices = cursor.fetchall()
             if not devices:
                 raise HTTPException(status_code=404, detail="No devices found.")
