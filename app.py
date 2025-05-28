@@ -68,9 +68,8 @@ class Alert(BaseModel):
     brace_id: str
     type: str
     message: str
-    date_stamp: str = Field(default_factory=lambda: datetime.now().strftime("%d-%m-%Y"))
-    time_stamp: str = Field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
-
+    time_stamp: datetime
+    
 class Alerts(BaseModel):
     brace_id: str
     type: str
@@ -292,7 +291,7 @@ async def post_alerts(alert: Alerts):
                     VALUES (%s, %s, %s)
                 """, (alert.brace_id, alert.type, alert.message))
         conn.commit()
-        await send_mail(EmailSchema(email=["josiah.reece007@gmail.com"]), alert.brace_id, alert.type, alert.message)
+        await send_mail(EmailSchema(email=["josiah.reece007@gmail.com","sashagay.wright@uwimona.edu.jm"," davaughsanderson@gmail.com", "lindon.falconer@alumni.uwi.edu"]), alert.brace_id, alert.type, alert.message)
         return JSONResponse(status_code=201, content={"message": "Alert successfully submitted."})
     except Exception as e:
         logging.error(f"Database error: {e}")
@@ -302,9 +301,9 @@ async def post_alerts(alert: Alerts):
 async def get_alerts():
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT brace_id, type, message, DATE(time_stamp) as Date, time_stamp::TIME(0) as Time FROM alerts")
+            cursor.execute("SELECT brace_id, type, message, time_stamp FROM alerts")
             alerts = cursor.fetchall()
-            response = [Alert(brace_id=item[0], type=item[1], message=item[2], date_stamp=item[3], time_stamp = item[4]) for item in alerts]
+            response = [Alert(brace_id=item[0], type=item[1], message=item[2], time_stamp=item[3]) for item in alerts]
             if not alerts:
                 raise HTTPException(status_code=404, detail="No alert data found.")
             return response
