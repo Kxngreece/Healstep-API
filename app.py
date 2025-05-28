@@ -2,6 +2,7 @@ import os
 import logging
 from fastapi import FastAPI, HTTPException, UploadFile, Form, Query, Request, Response, File, Form, Body
 import smtplib
+import datetime
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
@@ -67,8 +68,8 @@ class Alert(BaseModel):
     brace_id: str
     type: str
     message: str
-    date_stamp: str 
-    time_stamp: str  
+    date_stamp: str = Field(default_factory=lambda: datetime.now().strftime("%d-%m-%Y"))
+    time_stamp: str = Field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
 
 class Alerts(BaseModel):
     brace_id: str
