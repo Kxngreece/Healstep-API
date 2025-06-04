@@ -200,7 +200,7 @@ async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str, 
 
 @app.get("/knee-brace", response_model=List[KneeBraceData], status_code=200)
 async def get_knee_brace_data(
-    brace_id: Optional[str] = Query(None, description="Filter by brace ID. Returns latest reading.")
+    brace_id: Optional[str] = Query(None, description="Filter by brace ID")
 ):
     try:
         with conn.cursor() as cursor:
@@ -220,19 +220,24 @@ async def get_knee_brace_data(
             else:
                 cursor.execute(base_query.format(where_clause=""))
 
-            result = cursor.fetchall()
+            results = cursor.fetchall()  
             
-        if not result:
-            detail = f"No data found{' for ' + brace_id if brace_id else ''}"
-            raise HTTPException(status_code=404, detail=detail)
+        if not results:
+            return []  
             
-        return [{
-            "angle": float(result[0]),
-            "muscle_reading": result[1],
-            "brace_id": result[2],
-            "timestamp": result[3].isoformat(),
-            "display_name": result[4] or result[2]
-        }]
+        
+        data = []
+        for row in results:
+            timestamp = row[3]
+            data.append({
+                "angle": float(row[0]),
+                "muscle_reading": row[1], 
+                "brace_id": row[2],
+                "timestamp": timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp,
+                "display_name": row[4] or row[2]
+            })
+            
+        return data
 
     except Exception as e:
         logging.error(f"Database error: {e}")
