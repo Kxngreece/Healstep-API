@@ -291,7 +291,7 @@ async def post_alerts(alert: Alerts):
                     VALUES (%s, %s, %s)
                 """, (alert.brace_id, alert.type, alert.message))
         conn.commit()
-        await send_mail(EmailSchema(email=["josiah.reece007@gmail.com","sashagay.wright@uwimona.edu.jm"," davaughsanderson@gmail.com", "lindon.falconer@alumni.uwi.edu"]), alert.brace_id, alert.type, alert.message)
+        await send_mail(EmailSchema(email=["josiah.reece007@gmail.com", "jaleel.morgan101@gmail.com"]), alert.brace_id, alert.type, alert.message)
         return JSONResponse(status_code=201, content={"message": "Alert successfully submitted."})
     except Exception as e:
         logging.error(f"Database error: {e}")
@@ -457,5 +457,30 @@ async def get_settings():
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@app.get("/settings/{brace_id}", status_code=200)
+async def get_device_settings(brace_id: str):
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT upper_angle_treshold, lower_angle_treshold
+                FROM settings 
+                WHERE brace_id = %s 
+                ORDER BY time_stamp DESC 
+                LIMIT 1
+            """, (brace_id,))
+            result = cursor.fetchone()
+            
+        if not result:
+            raise HTTPException(status_code=404, detail="No settings found for this device")
+            
+        return {
+            "brace_id": brace_id,
+            "upper_angle_treshold": result[0],
+            "lower_angle_treshold": result[1]
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
