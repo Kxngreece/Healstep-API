@@ -200,7 +200,7 @@ async def send_mail(email: EmailSchema, brace: str, alert_type: str, code: str, 
 
 @app.get("/knee-brace", response_model=List[KneeBraceData], status_code=200)
 async def get_knee_brace_data(
-    brace_id: Optional[str] = Query(None, description="Filter by brace ID. Returns latest reading.")
+    brace_id: Optional[str] = Query(None, description="Filter by brace ID")
 ):
     try:
         with conn.cursor() as cursor:
@@ -211,7 +211,6 @@ async def get_knee_brace_data(
                 LEFT JOIN devices d ON k.brace_id = d.brace_id
                 {where_clause}
                 ORDER BY k.time_stamp DESC
-                LIMIT 1
             """
             
             if brace_id:
@@ -221,24 +220,28 @@ async def get_knee_brace_data(
             else:
                 cursor.execute(base_query.format(where_clause=""))
 
-            result = cursor.fetchone()
+            results = cursor.fetchall()  
             
-        if not result:
-            detail = f"No data found{' for ' + brace_id if brace_id else ''}"
-            raise HTTPException(status_code=404, detail=detail)
+        if not results:
+            return [] 
             
-        return [{
-            "angle": float(result[0]),
-            "muscle_reading": result[1],
-            "brace_id": result[2],
-            "timestamp": result[3].isoformat(),
-            "display_name": result[4] or result[2]
-        }]
+        data = []
+        for result in results:
+            timestamp = result[3]
+            data.append({
+                "angle": float(result[0]),
+                "muscle_reading": result[1],  
+                "brace_id": result[2],
+                "date_stamp": timestamp.strftime("%Y-%m-%d"),  
+                "time_stamp": timestamp.strftime("%H:%M:%S"),  
+                "display_name": result[4] or result[2]
+            })
+            
+        return data
 
     except Exception as e:
         logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
 
 @app.post("/knee-brace", status_code=201)
 async def post_knee_brace(data: KneeBraceData):
